@@ -1,0 +1,30 @@
+# Local Claude Code settings (machine-specific)
+.claude/settings.local.json
+
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# HIPAA-regulated data — never commit
+data/mimic/
+
+# Model artifacts
+models/checkpoints/
+*.bin
+*.safetensors
+
+# Logs
+logs/
+wandb/
+
+# OS
+.DS_Store
+Thumbs.db
