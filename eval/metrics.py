@@ -60,3 +60,42 @@ def compute_bertscore(predictions: list[dict], references: list[dict]) -> float:
         BERTScore F1 (target ≥ 0.88).
     """
     raise NotImplementedError
+
+
+def compute_rouge_l(predictions: list[dict], references: list[dict]) -> float:
+    """Compute ROUGE-L F1 between predictions and references.
+
+    Args:
+        predictions: Model-generated summaries.
+        references: Ground-truth summaries.
+
+    Returns:
+        ROUGE-L F1 score (target ≥ 0.42).
+    """
+    raise NotImplementedError
+
+
+def compute_factscore(predictions: list[dict], references: list[dict]) -> float:
+    """Compute FactScore for factual consistency.
+
+    Args:
+        predictions: Model-generated summaries.
+        references: Ground-truth summaries.
+
+    Returns:
+        FactScore (target ≥ 0.75).
+    """
+    raise NotImplementedError
+
+
+def compute_gpt4o_preference(predictions: list[dict], references: list[dict]) -> float:
+    """Compute GPT-4o preference rate: percentage of times GPT-4o prefers model output.
+
+    Args:
+        predictions: Model-generated summaries.
+        references: Ground-truth or baseline summaries.
+
+    Returns:
+        Preference rate as float between 0.0 and 1.0 (target ≥ 0.70).
+    """
+    raise NotImplementedError

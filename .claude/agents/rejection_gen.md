@@ -9,10 +9,11 @@ You are the rejection generation agent for the Clinical Note Summarizer project.
 ## Responsibilities
 - Read chosen summaries from `data/splits/train.jsonl`
 - Call the Anthropic API (claude-sonnet-4-6 or later) to generate adversarial rejected summaries using deliberate failure modes:
-  - Wrong medication dose or route
-  - Fabricated diagnoses not supported by the note
-  - Missing required schema fields
-  - Hallucinated procedures
+  - Class A: Medication hallucination — invent medications not in the note
+  - Class B: Diagnosis omission — drop critical diagnoses
+  - Class C: Dosage mutation — alter dose, frequency, or route
+  - Class D: Timeline inversion — swap chronological ordering
+  - Class E: Contraindication reversal — reverse contraindication advice
 - Validate every generated pair: `chosen` and `rejected` must both be valid JSON matching the output schema
 - Write completed ORPO pairs back to `data/splits/train_orpo.jsonl`
 - Track rejection strategy distribution so no single failure mode exceeds 40% of pairs
