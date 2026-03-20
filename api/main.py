@@ -18,7 +18,7 @@ from api.guardrail import validate_medications
 
 load_dotenv()
 
-MAX_NOTE_LENGTH = 8192
+MAX_NOTE_TOKENS = 6000
 
 
 # --- Pydantic Models (output schema contract) ---
@@ -75,7 +75,27 @@ async def summarize(request: SummarizeRequest):
     """
     if not request.note.strip():
         raise HTTPException(status_code=422, detail="Note cannot be empty")
-    if len(request.note) > MAX_NOTE_LENGTH:
-        raise HTTPException(status_code=422, detail=f"Note exceeds {MAX_NOTE_LENGTH} character limit")
+    # Token counting requires tokenizer loaded at startup in app.state
+    # For now, approximate: reject if character count suggests >6000 tokens
+    if len(request.note) > MAX_NOTE_TOKENS * 4:  # ~4 chars/token approximation until tokenizer available
+        raise HTTPException(status_code=422, detail=f"Note exceeds {MAX_NOTE_TOKENS} token limit")
 
+    raise NotImplementedError
+
+
+class BatchSummarizeRequest(BaseModel):
+    notes: list[str]
+
+
+class BatchSummarizeResponse(BaseModel):
+    results: list[SummarizeResponse]
+
+
+@app.post("/batch_summarize", response_model=BatchSummarizeResponse)
+async def batch_summarize(request: BatchSummarizeRequest):
+    """Summarize multiple clinical notes in a single request.
+
+    Each note is processed independently through the same pipeline
+    as the /summarize endpoint.
+    """
     raise NotImplementedError

@@ -17,7 +17,10 @@ from dotenv import load_dotenv
 from eval.metrics import (
     compute_bertscore,
     compute_drug_entity_error_rate,
+    compute_factscore,
+    compute_gpt4o_preference,
     compute_hhem_score,
+    compute_rouge_l,
     load_drugbank_vocab,
 )
 
@@ -27,6 +30,9 @@ EVAL_TARGETS = {
     "drug_entity_error_rate": 0.02,  # ≤ 2%
     "hhem": 0.80,                     # ≥ 0.80
     "bertscore": 0.88,                # ≥ 0.88
+    "rouge_l": 0.42,                  # ≥ 0.42
+    "factscore": 0.75,                # ≥ 0.75
+    "gpt4o_preference": 0.70,         # ≥ 0.70
 }
 
 

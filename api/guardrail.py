@@ -15,6 +15,7 @@ import csv
 import os
 
 from dotenv import load_dotenv
+from rapidfuzz import fuzz
 
 load_dotenv()
 
@@ -31,15 +32,17 @@ def load_drugbank_vocabulary(vocab_path: str | None = None) -> set[str]:
     raise NotImplementedError
 
 
-def validate_medications(output: dict, vocab: set[str] | None = None) -> dict:
-    """Validate medication names against DrugBank vocabulary.
+def validate_medications(output: dict, vocab: set[str] | None = None, fuzzy_threshold: int = 88) -> dict:
+    """Validate medication names against DrugBank vocabulary using fuzzy matching.
 
-    For each medication in output["medications"], checks if the name exists
-    in the vocabulary. Unrecognized names are appended to confidence_flags.
+    For each medication in output["medications"], checks if the name matches
+    any entry in the vocabulary above the fuzzy threshold. Unrecognized names
+    are appended to confidence_flags.
 
     Args:
         output: Model output dict conforming to the output schema.
         vocab: Optional pre-loaded vocabulary set. If None, loads from env path.
+        fuzzy_threshold: Minimum fuzzy match score (0-100) to consider a match. Default 88.
 
     Returns:
         The output dict with confidence_flags updated.

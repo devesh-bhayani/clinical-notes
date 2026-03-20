@@ -11,8 +11,11 @@ python train/orpo_train.py --config configs/orpo_base.yaml
 # Evaluate
 python eval/run_eval_suite.py --split test
 
-# Serve
+# Serve API
 uvicorn api.main:app --reload --port 8000
+
+# Serve UI
+streamlit run ui/streamlit_app.py
 ```
 
 ## Architecture
@@ -68,3 +71,7 @@ Every model output must be valid JSON conforming to:
 | Drug Entity Error Rate | ≤ 2% |
 | HHEM (hallucination) | ≥ 0.80 |
 | BERTScore | ≥ 0.88 |
+| ROUGE-L | ≥ 0.42 |
+| FactScore | ≥ 0.75 |
+| GPT-4o Preference | ≥ 70% |
+| Latency | ≤ 8 sec |
