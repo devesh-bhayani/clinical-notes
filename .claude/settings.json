@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/check_no_mimic_data.py $CLAUDE_TOOL_INPUT_PATH"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[Claude] Running: $CLAUDE_TOOL_INPUT_COMMAND'"
+          }
+        ]
+      }
+    ]
+  }
+}
