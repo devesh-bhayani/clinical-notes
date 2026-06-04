@@ -39,10 +39,14 @@ eval-smoke: synthetic  ## Build synthetic data, then run the eval suite on it.
 	$(STUB_ENV) SPLITS_DIR=$(SPLITS_DIR) \
 		$(PYTHON) eval/run_eval_suite.py --split test --smoke
 
-compliance:  ## Run the HIPAA PHI check across all tracked text files.
-	@git ls-files '*.py' '*.csv' '*.md' '*.yaml' '*.yml' | while read -r f; do \
-		$(PYTHON) scripts/check_no_mimic_data.py "$$f" || exit 1; \
-	done
+compliance:  ## Run the HIPAA PHI check across tracked data/source files.
+	@# Exclude the compliance tooling and Claude docs, which contain the pattern
+	@# strings (and "mimic" in the checker's filename) as documentation.
+	@git ls-files '*.py' '*.csv' '*.md' '*.yaml' '*.yml' \
+		| grep -vE '^\.claude/|^scripts/check_no_mimic_data\.py$$' \
+		| while read -r f; do \
+			$(PYTHON) scripts/check_no_mimic_data.py "$$f" || exit 1; \
+		done
 	@echo "HIPAA compliance check passed."
 
 serve:  ## Serve the API with the stub backend (no GPU required).
