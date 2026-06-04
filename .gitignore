@@ -25,6 +25,11 @@ models/checkpoints/
 logs/
 wandb/
 
+# Generated synthetic + evaluation artifacts (keep .gitkeep)
+data/splits/*.jsonl
+data/splits/*.csv
+eval/results/*.json
+
 # OS
 .DS_Store
 Thumbs.db
