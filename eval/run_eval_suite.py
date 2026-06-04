@@ -166,6 +166,11 @@ def main() -> None:
         "--output", type=str, default="eval/results/latest.json",
         help="Path to write the results JSON",
     )
+    parser.add_argument(
+        "--smoke", action="store_true",
+        help="Exit 0 if the suite ran and wrote a report, regardless of gate "
+             "pass/fail. For CI plumbing checks on non-production data.",
+    )
     args = parser.parse_args()
 
     predictions = load_predictions(args.split)
@@ -176,6 +181,8 @@ def main() -> None:
     save_results(report, args.output)
 
     print(json.dumps(gate_results, indent=2))
+    if args.smoke:
+        raise SystemExit(0)
     raise SystemExit(0 if gate_results["overall"]["status"] == "pass" else 1)
 
 

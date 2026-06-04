@@ -16,6 +16,10 @@ _SAMPLE_VOCAB = _REPO_ROOT / "data" / "drugbank_vocabulary.sample.csv"
 # Configure the test environment before the app or guardrail import-time reads.
 os.environ.setdefault("DRUGBANK_VOCAB_PATH", str(_SAMPLE_VOCAB))
 os.environ.setdefault("ALLOW_STUB_INFERENCE", "1")
+# Keep tests hermetic: never reach out to Hugging Face for the HHEM model, so
+# compute_hhem_score deterministically uses its lexical fallback under pytest.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 
 @pytest.fixture(scope="session")

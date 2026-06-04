@@ -1,0 +1,19 @@
+# Lightweight dependencies for tests, CI, the API stub backend, and the eval
+# suite — deliberately excludes the GPU/ML training stack (torch, transformers,
+# peft, trl, bitsandbytes) and streamlit so CI stays fast and hermetic.
+#
+# With these alone:
+#   - the full pytest suite passes (stub inference, no GPU),
+#   - DEER / ROUGE-L / FactScore / HHEM(proxy) gates run,
+#   - BERTScore and GPT-4o-preference gates report "skipped" (optional deps).
+#
+# Install the full runtime (requirements.txt) on the training/serving box.
+
+fastapi>=0.111.0
+httpx>=0.27.0
+python-dotenv>=1.0.0
+pyyaml>=6.0
+rapidfuzz>=3.9.0
+rouge-score>=0.1.2
+pandas>=2.2.0
+pytest>=8.2.0

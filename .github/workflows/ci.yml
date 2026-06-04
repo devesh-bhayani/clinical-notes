@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Lightweight, hermetic test config: stub inference, sample vocab, no network.
+  ALLOW_STUB_INFERENCE: "1"
+  DRUGBANK_VOCAB_PATH: data/drugbank_vocabulary.sample.csv
+  SPLITS_DIR: data/splits
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+
+jobs:
+  test:
+    name: Tests & eval smoke (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install lightweight dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run test suite
+        run: pytest -q
+
+      - name: Eval suite smoke test (synthetic data)
+        # --smoke asserts the suite runs and writes a report; the stub backend
+        # is not expected to pass the quality gates on synthetic data.
+        run: |
+          python scripts/make_synthetic_data.py --output "$SPLITS_DIR"
+          python eval/run_eval_suite.py --split test --smoke
+
+  compliance:
+    name: HIPAA compliance check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Scan tracked files for PHI signatures
+        run: |
+          git ls-files '*.py' '*.csv' '*.md' '*.yaml' '*.yml' | while read -r f; do
+            python scripts/check_no_mimic_data.py "$f" || exit 1
+          done
+          echo "HIPAA compliance check passed."
