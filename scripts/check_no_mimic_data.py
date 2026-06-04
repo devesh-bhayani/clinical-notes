@@ -3,6 +3,16 @@
 import re
 import sys
 
+# Make report output robust to consoles whose default encoding cannot represent
+# the report glyphs (e.g. Windows cp1252 and the "✗" marker). Without this the
+# tool can crash with a UnicodeEncodeError mid-report instead of printing a
+# clean, actionable violation list — and a crash would mask which file failed.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # non-reconfigurable stream
+        pass
+
 MIMIC_PATTERNS = [
     re.compile(r"(?i)admission\s+date\s*:"),
     re.compile(r"(?i)discharge\s+date\s*:"),
