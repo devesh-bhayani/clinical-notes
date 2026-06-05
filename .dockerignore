@@ -1,0 +1,28 @@
+# Keep the build context small and free of data/artifacts/secrets.
+.git
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.coverage
+htmlcov
+*.egg-info
+
+# Secrets and HIPAA-regulated data — never bake into an image.
+.env
+data/mimic/
+data/splits/*.jsonl
+data/splits/*.csv
+
+# Model artifacts (mount at runtime instead).
+models/checkpoints/
+*.bin
+*.safetensors
+
+# Logs / local
+logs/
+wandb/
+.DS_Store
+Thumbs.db

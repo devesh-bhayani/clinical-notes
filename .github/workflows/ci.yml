@@ -37,8 +37,13 @@ jobs:
       - name: Install lightweight dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Run test suite
-        run: pytest -q
+      - name: Run test suite with coverage
+        run: pytest -q --cov=api --cov=eval --cov=data --cov-report=term-missing
+
+      - name: Enforce guardrail coverage (safety-critical, >=90%)
+        # The DrugBank guardrail is the last line of defense before model output
+        # reaches users; the spec requires it to stay above 90% coverage.
+        run: coverage report --include="api/guardrail.py" --fail-under=90
 
       - name: Eval suite smoke test (synthetic data)
         # --smoke asserts the suite runs and writes a report; the stub backend

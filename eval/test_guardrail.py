@@ -146,3 +146,62 @@ def test_malformed_input_handled(drugbank_vocab):
     # medication entries are not dicts (string entries).
     out = validate_medications(_output(["Aspirin", "Zzzdrug"]), vocab=drugbank_vocab)
     assert len(out["confidence_flags"]) == 1  # only Zzzdrug flagged
+
+
+# --- Vocabulary loading edge cases ------------------------------------------
+
+def test_load_vocab_no_path_raises_valueerror(monkeypatch):
+    """No path argument and no env var configured raises ValueError."""
+    monkeypatch.delenv("DRUGBANK_VOCAB_PATH", raising=False)
+    with pytest.raises(ValueError):
+        load_drugbank_vocabulary(None)
+
+
+def test_load_vocab_empty_file(tmp_path):
+    """An empty CSV yields an empty vocabulary, not an error."""
+    empty = tmp_path / "empty.csv"
+    empty.write_text("", encoding="utf-8")
+    assert load_drugbank_vocabulary(str(empty)) == set()
+
+
+def test_load_vocab_single_column(tmp_path):
+    """A headerless single-column file treats every row (incl. the first) as a name."""
+    vocab_file = tmp_path / "names.csv"
+    vocab_file.write_text("Aspirin\nMetformin\n", encoding="utf-8")
+    vocab = load_drugbank_vocabulary(str(vocab_file))
+    assert "aspirin" in vocab and "metformin" in vocab
+
+
+def test_get_vocabulary_is_cached(sample_vocab_path):
+    """get_vocabulary returns a usable set and is safe to call repeatedly."""
+    from api.guardrail import get_vocabulary
+
+    first = get_vocabulary(sample_vocab_path)
+    second = get_vocabulary(sample_vocab_path)
+    assert "aspirin" in first and first == second
+
+
+# --- validate_medications: vocab loading + never-raise contract -------------
+
+def test_validate_loads_vocab_from_env_when_none():
+    """With vocab=None, the env-configured vocabulary is loaded (conftest sets it)."""
+    out = validate_medications(_output([_med("Aspirin")]), vocab=None)
+    assert out["confidence_flags"] == []
+
+
+def test_validate_vocab_none_env_unset_flags(monkeypatch):
+    """With no vocab and no env var, drugs are flagged (fail-safe), never passed."""
+    monkeypatch.delenv("DRUGBANK_VOCAB_PATH", raising=False)
+    out = validate_medications(_output([_med("Aspirin")]), vocab=None)
+    assert len(out["confidence_flags"]) == 1
+
+
+def test_validate_never_raises_on_pathological_entry(drugbank_vocab):
+    """A medication object whose access raises is flagged, not propagated."""
+
+    class ExplodingMed(dict):
+        def get(self, *args, **kwargs):  # noqa: D401
+            raise RuntimeError("boom")
+
+    out = validate_medications(_output([ExplodingMed()]), vocab=drugbank_vocab)
+    assert any("could not validate" in f for f in out["confidence_flags"])

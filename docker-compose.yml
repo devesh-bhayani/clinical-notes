@@ -1,0 +1,36 @@
+# Clinical Note Summarizer — local stack (API + UI).
+#
+# Defaults to the lightweight stub backend so `docker compose up --build` runs
+# anywhere (no GPU, no checkpoint, no MIMIC data). For real inference:
+#   1. build with the full runtime: set REQUIREMENTS=requirements.txt below,
+#   2. mount your trained adapter into the api service and set CHECKPOINT_DIR,
+#   3. point DRUGBANK_VOCAB_PATH at the full DrugBank vocabulary,
+#   4. (GPU) add an nvidia runtime / device reservations to the api service.
+
+services:
+  api:
+    build:
+      context: .
+      args:
+        # Switch to requirements.txt for the full BioMistral runtime.
+        REQUIREMENTS: requirements-dev.txt
+    image: clinical-notes:demo
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      ALLOW_STUB_INFERENCE: "1"
+      DRUGBANK_VOCAB_PATH: data/drugbank_vocabulary.sample.csv
+      # CHECKPOINT_DIR: /models/checkpoint   # set for real inference
+    # volumes:
+    #   - ./models/checkpoints:/models/checkpoint:ro   # mount a trained adapter
+
+  ui:
+    image: clinical-notes:demo
+    command: streamlit run ui/streamlit_app.py --server.address 0.0.0.0 --server.port 8501
+    depends_on:
+      - api
+    ports:
+      - "8501:8501"
+    environment:
+      API_BASE_URL: http://api:8000

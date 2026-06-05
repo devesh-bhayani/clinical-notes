@@ -30,6 +30,11 @@ data/splits/*.jsonl
 data/splits/*.csv
 eval/results/*.json
 
+# Coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
+
 # OS
 .DS_Store
 Thumbs.db
