@@ -6,6 +6,7 @@ Run with:
 """
 
 import json
+import os
 
 import pandas as pd
 import pytest
@@ -40,6 +41,45 @@ def test_rejection_is_deterministic():
     a = rejection_gen.generate_rejected(chosen, "A")
     b = rejection_gen.generate_rejected(chosen, "A")
     assert a == b
+
+
+def test_rejection_deterministic_across_processes():
+    """Seeding must not depend on PYTHONHASHSEED (reproducible dataset builds)."""
+    import subprocess
+    import sys
+
+    code = (
+        "from data.rejection_gen import generate_rejected;"
+        "import json;"
+        "print(json.dumps(generate_rejected("
+        "{'diagnoses':['x'],'medications':[],'procedures':[],"
+        "'discharge_instructions':'Rest at home.','confidence_flags':[]}, 'random'),"
+        "sort_keys=True))"
+    )
+    outs = []
+    for seed in ("0", "1", "12345"):
+        env = {**os.environ, "PYTHONHASHSEED": seed}
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                             text=True, env=env, cwd=os.getcwd())
+        outs.append(out.stdout.strip())
+    assert outs[0] and outs[0] == outs[1] == outs[2], outs
+
+
+def test_rejection_never_equals_chosen_on_edge_inputs():
+    """No-op-prone inputs must still yield a usable (different) rejected."""
+    edge_cases = [
+        {"diagnoses": ["Acute appendicitis"],
+         "medications": [{"name": "Aspirin", "dose": "81 mg", "freq": "daily", "route": "oral"}],
+         "procedures": [],
+         "discharge_instructions": "Avoid heavy lifting.", "confidence_flags": []},
+        {"diagnoses": [], "medications": [], "procedures": [],
+         "discharge_instructions": "", "confidence_flags": []},
+        {"diagnoses": ["x"], "medications": [], "procedures": [],
+         "discharge_instructions": "Rest.", "confidence_flags": []},
+    ]
+    for chosen in edge_cases:
+        for cls in (*rejection_gen.FAILURE_CLASSES, "random"):
+            assert rejection_gen.generate_rejected(chosen, cls) != chosen, (cls, chosen)
 
 
 def test_rejection_does_not_mutate_input():
