@@ -127,6 +127,8 @@ def build_trainer(cfg: dict, model, tokenizer, dataset):
         max_length=t["max_length"],
         max_prompt_length=t.get("max_prompt_length", t["max_length"] // 2),
         num_train_epochs=t["num_train_epochs"],
+        # max_steps > 0 caps training regardless of epochs (used by the smoke run).
+        max_steps=t.get("max_steps", -1),
         per_device_train_batch_size=t["per_device_train_batch_size"],
         gradient_accumulation_steps=t["gradient_accumulation_steps"],
         learning_rate=float(t["learning_rate"]),

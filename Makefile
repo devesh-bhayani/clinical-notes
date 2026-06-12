@@ -63,6 +63,13 @@ ui:  ## Launch the Streamlit demo UI.
 train:  ## Launch ORPO training (requires GPU + requirements.txt).
 	$(PYTHON) train/orpo_train.py --config configs/orpo_base.yaml
 
+train-smoke:  ## ~10-min end-to-end train->eval validation on a few hundred pairs (GPU).
+	DRUGBANK_VOCAB_PATH=$${DRUGBANK_VOCAB_PATH:-$(SAMPLE_VOCAB)} SPLITS_DIR=$(SPLITS_DIR) \
+		$(PYTHON) -m data.asclepius --output $(SPLITS_DIR) --limit 500 --make-splits
+	SPLITS_DIR=$(SPLITS_DIR) $(PYTHON) train/orpo_train.py --config configs/orpo_smoke.yaml
+	SPLITS_DIR=$(SPLITS_DIR) CHECKPOINT_DIR=models/smoke \
+		$(PYTHON) eval/run_eval_suite.py --split test --smoke
+
 clean:  ## Remove caches and generated synthetic artifacts.
 	-rm -rf .pytest_cache
 	-find . -type d -name __pycache__ -prune -exec rm -rf {} +

@@ -1,0 +1,50 @@
+# ORPO SMOKE config — validate the full train -> save -> eval loop end to end
+# in ~10 minutes on a single GPU, before committing to a real run.
+#
+# Not for producing a usable model: max_steps is tiny and the dataset is small.
+# Prep a few hundred pairs first, then run:
+#   python -m data.asclepius --output data/splits --limit 500 --make-splits
+#   python train/orpo_train.py --config configs/orpo_smoke.yaml
+#   CHECKPOINT_DIR=models/smoke uvicorn api.main:app --port 8000   # sanity-serve
+
+model:
+  name: "BioMistral/BioMistral-7B"
+  quantization:
+    load_in_4bit: true
+    bnb_4bit_quant_type: "nf4"
+    bnb_4bit_compute_dtype: "bfloat16"
+    bnb_4bit_use_double_quant: true
+
+lora:
+  r: 16              # smaller adapter for a faster smoke run
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  task_type: "CAUSAL_LM"
+
+training:
+  orpo_beta: 0.1
+  num_train_epochs: 1
+  max_steps: 20             # hard cap — the whole point of the smoke run
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 1
+  learning_rate: 5.0e-5
+  lr_scheduler_type: "constant"
+  warmup_ratio: 0.0
+  max_length: 1024          # shorter sequences keep each step fast
+  max_prompt_length: 768
+  logging_steps: 5
+  save_strategy: "no"       # one save at the end via trainer.save_model()
+  eval_strategy: "no"
+  save_total_limit: 1
+  bf16: true
+  report_to: "none"         # no W&B for the smoke run
+
+data:
+  train_file: "${SPLITS_DIR}/train_orpo.jsonl"
+  val_file: "${SPLITS_DIR}/val.jsonl"
+  test_file: "${SPLITS_DIR}/test.jsonl"
+
+output:
+  output_dir: "models/smoke"
+  logging_dir: "logs"
