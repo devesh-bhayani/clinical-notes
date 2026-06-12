@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 import random
@@ -59,8 +60,14 @@ _REVERSALS = [
 
 
 def _rng(chosen: dict, salt: str) -> random.Random:
-    """Deterministic RNG seeded from the summary content and a salt."""
-    seed = hash((json.dumps(chosen, sort_keys=True, default=str), salt)) & 0xFFFFFFFF
+    """RNG seeded deterministically from the summary content and a salt.
+
+    Uses a stable hash (SHA-256) rather than the builtin ``hash()``, which is
+    salted per process (PYTHONHASHSEED) and would make dataset builds
+    irreproducible across runs and Python versions.
+    """
+    payload = (json.dumps(chosen, sort_keys=True, default=str) + "\x00" + salt).encode()
+    seed = int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
     return random.Random(seed)
 
 
@@ -137,6 +144,15 @@ def generate_timeline_inversion(chosen: dict) -> dict:
     procedures = rej.get("procedures") or []
     if len(procedures) > 1:
         rej["procedures"] = list(reversed(procedures))
+    # Guarantee a visible change for ORPO: a single-sentence instruction with no
+    # temporal connectives reverses to itself, so scramble word order instead.
+    if rej == chosen and text:
+        words = text.split()
+        rej["discharge_instructions"] = " ".join(reversed(words)) if len(words) > 1 else (
+            text + " Do this before being admitted."
+        )
+    elif rej == chosen and not text:
+        rej["discharge_instructions"] = "Complete follow-up before the procedure was performed."
     return rej
 
 
@@ -171,13 +187,31 @@ _GENERATORS = {
 
 
 def generate_rejected(chosen: dict, failure_class: str = "random") -> dict:
-    """Dispatch to a failure-class generator (or weighted-random selection)."""
+    """Dispatch to a failure-class generator (or weighted-random selection).
+
+    Guarantees the result differs from ``chosen`` — an ORPO pair where the
+    rejected equals the chosen carries no preference signal. In random mode,
+    if the sampled class no-ops on this input, other classes are tried in a
+    deterministic order; the final fallback (medication hallucination) always
+    appends, so it always differs.
+    """
     if failure_class == "random":
         rng = _rng(chosen, "dispatch")
-        failure_class = rng.choices(FAILURE_CLASSES, weights=FAILURE_WEIGHTS, k=1)[0]
+        first = rng.choices(FAILURE_CLASSES, weights=FAILURE_WEIGHTS, k=1)[0]
+        order = [first] + [c for c in FAILURE_CLASSES if c != first]
+        for cls in order:
+            rejected = _GENERATORS[cls](chosen)
+            if rejected != chosen:
+                return rejected
+        return generate_medication_hallucination(chosen)
+
     if failure_class not in _GENERATORS:
         raise ValueError(f"Unknown failure class: {failure_class!r}")
-    return _GENERATORS[failure_class](chosen)
+    rejected = _GENERATORS[failure_class](chosen)
+    if rejected == chosen:
+        # Requested class no-opped on this input; fall back to a guaranteed change.
+        rejected = generate_medication_hallucination(chosen)
+    return rejected
 
 
 def _extract_note_and_summary(record: dict) -> tuple[str, dict]:
