@@ -22,11 +22,19 @@ Summarize unstructured clinical discharge notes into structured JSON containing:
 
 ## Training Data
 
-- **Source:** MIMIC-IV discharge summaries (PhysioNet, requires DUA)
-- **Sample Size:** 10,000 stratified records
-- **Extraction:** Deterministic pipeline using regex + spaCy NER
-- **Preference Pairs:** ORPO format with 5 rejection failure classes (A–E)
-- **Validation:** DrugBank cross-validation for medication entities
+- **Source:** one of
+  - **Asclepius-Synthetic-Clinical-Notes** (default; 157k synthetic discharge
+    summaries from PMC case reports — public, no DUA, no PHI), or
+  - **MIMIC-IV** discharge summaries (PhysioNet, requires DUA) for a
+    medication-dense corpus.
+- **Sample Size:** configurable (`--limit`); default working set ~20,000 notes.
+- **Extraction:** deterministic pipeline using regex (prose-aware diagnosis
+  extraction) + optional spaCy NER for medications.
+- **Preference Pairs:** ORPO format with 5 rejection failure classes (A–E).
+- **Validation:** DrugBank cross-validation for medication entities.
+- **Caveat:** Asclepius notes rarely list structured medications, so chosen
+  summaries from Asclepius often have an empty `medications` field; the
+  medication guardrail and Class-A hallucination rejections still apply.
 
 ## Evaluation Results
 

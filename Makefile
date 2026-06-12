@@ -36,6 +36,10 @@ synthetic:  ## Generate the synthetic PHI-free dataset under $(SPLITS_DIR).
 	$(STUB_ENV) SPLITS_DIR=$(SPLITS_DIR) \
 		$(PYTHON) scripts/make_synthetic_data.py --output $(SPLITS_DIR)
 
+asclepius:  ## Build real ORPO splits from the public Asclepius dataset (needs `datasets`).
+	DRUGBANK_VOCAB_PATH=$${DRUGBANK_VOCAB_PATH:-$(SAMPLE_VOCAB)} SPLITS_DIR=$(SPLITS_DIR) \
+		$(PYTHON) -m data.asclepius --output $(SPLITS_DIR) --limit $${LIMIT:-20000} --make-splits
+
 eval-smoke: synthetic  ## Build synthetic data, then run the eval suite on it.
 	$(STUB_ENV) SPLITS_DIR=$(SPLITS_DIR) \
 		$(PYTHON) eval/run_eval_suite.py --split test --smoke

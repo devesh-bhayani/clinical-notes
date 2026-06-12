@@ -59,21 +59,37 @@ Or with Docker (stub backend, runs anywhere):
 docker compose up --build      # API on :8000, UI on :8501
 ```
 
-### B. Production (GPU + real data)
+### B. Real training run (GPU)
+
+Two data sources are supported. **Asclepius** is the zero-friction path: a
+public, **DUA-free** corpus of 157k synthetic discharge summaries — no PhysioNet
+credentialing, no HIPAA exposure.
 
 ```bash
 pip install -r requirements.txt            # full ML/serving stack (CUDA box)
-cp .env.example .env                        # then fill in the paths/keys below
+cp .env.example .env                        # set DRUGBANK_VOCAB_PATH (CC0 download)
 
 python train/vram_test.py                              # preflight GPU check
-python -m data.pipeline   --input "$MIMIC_DATA_DIR" --output data/splits --sample 10000
-python -m data.rejection_gen --input data/splits/chosen_summaries.jsonl \
-        --output data/splits/train_orpo.jsonl --batch_size 5000
+
+# Build chosen summaries + ORPO splits from Asclepius (recommended):
+python -m data.asclepius --output data/splits --limit 20000 --make-splits
+
+# ── or, with a MIMIC-IV DUA, the medication-dense alternative: ──
+# python -m data.pipeline --input "$MIMIC_DATA_DIR" --output data/splits --sample 10000
+# python -m data.rejection_gen --input data/splits/chosen_summaries.jsonl \
+#         --output data/splits/train_orpo.jsonl --batch_size 5000
+
 python train/orpo_train.py --config configs/orpo_base.yaml      # produces the adapter
 python eval/run_eval_suite.py --split test                      # gated pass/fail
 
 CHECKPOINT_DIR=models/checkpoints uvicorn api.main:app --port 8000   # serve the real model
 ```
+
+> **Note on Asclepius:** diagnoses, procedures, and instructions extract well;
+> medications are frequently absent in the source notes, so the `medications`
+> field is often empty (faithful to the note). The medication guardrail/DEER
+> metric still apply, and the Class-A hallucination rejections still teach the
+> model not to invent drugs. For a medication-dense corpus, prefer MIMIC-IV.
 
 ## Configuration
 
@@ -138,6 +154,10 @@ Metrics whose backend isn't configured (BERTScore, GPT-4o) are reported as
 
 ## Data onboarding (expected formats)
 
+- **Asclepius** (recommended, no DUA): pulled automatically by
+  `python -m data.asclepius` from
+  [`starmpcc/Asclepius-Synthetic-Clinical-Notes`](https://huggingface.co/datasets/starmpcc/Asclepius-Synthetic-Clinical-Notes)
+  (requires the `datasets` library + network on first run).
 - **MIMIC-IV notes** (`MIMIC_DATA_DIR`): a CSV with a note-text column
   (`text`/`note`/`TEXT`/`note_text`) and, ideally, a `category` column so the
   pipeline can filter to discharge summaries.

@@ -27,15 +27,18 @@ from api.guardrail import _is_recognized  # internal, reused for cross-validatio
 
 load_dotenv()
 
-# Section headers commonly found in MIMIC discharge summaries.
+# Section headers found in MIMIC discharge summaries and in narrative synthetic
+# notes (e.g. Asclepius). Patterns are ordered general-to-specific via alternation
+# and matched case-insensitively.
 _SECTION_PATTERNS = {
     "diagnoses": re.compile(
-        r"(?:discharge diagnos[ei]s|final diagnos[ei]s|principal diagnosis)\s*:?\s*\n?(.*?)"
+        r"(?:discharge diagnos[ei]s|final diagnos[ei]s|principal diagnos[ei]s"
+        r"|admission diagnos[ei]s|diagnos[ei]s)\s*:?\s*\n?(.*?)"
         r"(?=\n\s*[A-Z][A-Za-z /]+:|\Z)",
         re.IGNORECASE | re.DOTALL,
     ),
     "medications": re.compile(
-        r"(?:discharge medications?|medications? on discharge)\s*:?\s*\n?(.*?)"
+        r"(?:discharge medications?|medications? on discharge|medications?)\s*:?\s*\n?(.*?)"
         r"(?=\n\s*[A-Z][A-Za-z /]+:|\Z)",
         re.IGNORECASE | re.DOTALL,
     ),
@@ -61,6 +64,22 @@ _FREQ_RE = re.compile(
 )
 _LIST_SPLIT = re.compile(r"\n|;|(?:^|\n)\s*\d+[.)]\s*", re.MULTILINE)
 
+# Prose-section helpers (narrative notes where sections are sentences, not lists).
+# A "negative" section ("None", "N/A", "not listed") yields no entries.
+_NEG_SECTION = re.compile(
+    r"^\s*(none|n/?a|not (?:specified|listed|applicable|provided|available|reported)"
+    r"|no (?:\w+\s+)?medications?|unknown)\b",
+    re.IGNORECASE,
+)
+# Lead-ins to strip from prose diagnosis blocks before extracting terms.
+_DX_LEADIN = re.compile(
+    r"^(?:the patient (?:was|is|has been) (?:discharged|diagnosed)(?: with)?(?: a)?"
+    r"(?: diagnosis of)?|diagnos(?:is|ed)(?: with| of)?|discharged with(?: a)?"
+    r"(?: diagnosis of)?)\s*",
+    re.IGNORECASE,
+)
+_LIST_MARKER = re.compile(r"(?m)^\s*(?:\d+[.)]|[-*])\s+")
+
 
 def filter_discharge_summaries(df: pd.DataFrame) -> pd.DataFrame:
     """Filter a MIMIC-IV notes DataFrame to discharge summaries only."""
@@ -82,6 +101,44 @@ def _clean_items(block: str) -> list[str]:
     return items
 
 
+def extract_diagnoses(block: str) -> list[str]:
+    """Extract diagnosis terms from a section block (list-style or prose).
+
+    List-style blocks (newlines or numbered/bulleted items) are split on those
+    markers. Prose blocks ("...diagnosis of A, B, and C") have their lead-in
+    stripped and are list-split only when the result is clearly a short-term
+    enumeration; otherwise the leading clause is kept as a single diagnosis.
+    Negative sections ("None", "N/A") yield no diagnoses.
+    """
+    block = (block or "").strip()
+    if not block or _NEG_SECTION.match(block):
+        return []
+    block = _DX_LEADIN.sub("", block).strip()
+
+    if _LIST_MARKER.search(block) or "\n" in block:
+        parts = _LIST_SPLIT.split(block)
+    else:
+        first_sentence = re.split(r"(?<=[.])\s", block, maxsplit=1)[0]
+        segments = re.split(r",|\band\b", first_sentence)
+        if len(segments) >= 2 and all(len(s.split()) <= 5 for s in segments):
+            parts = segments
+        else:
+            parts = [first_sentence]
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in parts:
+        item = re.sub(r"\s+", " ", (raw or "")).strip(" .,-*\t")
+        if not (2 < len(item) <= 90):
+            continue
+        if item.lower().startswith(("the ", "he ", "she ", "patient", "based on")):
+            continue
+        if item.lower() not in seen:
+            seen.add(item.lower())
+            out.append(item)
+    return out[:8]
+
+
 def extract_sections(note: str) -> dict:
     """Extract diagnoses, medications, procedures, and instructions via regex."""
     sections = {
@@ -97,9 +154,13 @@ def extract_sections(note: str) -> dict:
         match = pattern.search(note)
         block = match.group(1).strip() if match else ""
         if key == "medications":
-            sections["medications_raw"] = block
+            # A negative section ("None", "N/A") carries no medications.
+            sections["medications_raw"] = "" if _NEG_SECTION.match(block) else block
         elif key == "discharge_instructions":
-            sections["discharge_instructions"] = re.sub(r"\s+", " ", block).strip()
+            text = "" if _NEG_SECTION.match(block) else block
+            sections["discharge_instructions"] = re.sub(r"\s+", " ", text).strip()
+        elif key == "diagnoses":
+            sections[key] = extract_diagnoses(block)
         else:
             sections[key] = _clean_items(block)
     return sections
