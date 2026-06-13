@@ -19,6 +19,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Reduce CUDA fragmentation. On small GPUs the transformers loader can spike and
+# OOM loading a 4-bit 7B even though it only needs ~4 GB resident; expandable
+# segments avoids that. Set before torch is imported anywhere. Harmless on large
+# GPUs. Override by exporting PYTORCH_CUDA_ALLOC_CONF yourself.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clinical_notes.train")
 
@@ -99,12 +105,19 @@ def load_model_and_tokenizer(cfg: dict):
 
 
 def load_data(cfg: dict):
-    """Load ORPO preference pairs (prompt/chosen/rejected) from JSONL splits."""
+    """Load ORPO preference pairs (prompt/chosen/rejected) from JSONL splits.
+
+    Only loads a validation split when in-loop eval is enabled. The project's
+    val.jsonl/test.jsonl are eval-suite *references* ({"chosen": {...}}), not
+    ORPO pairs, so they are consumed post-training by eval/run_eval_suite.py —
+    not by the trainer.
+    """
     from datasets import load_dataset
 
     data_files = {"train": cfg["data"]["train_file"]}
+    eval_enabled = cfg["training"].get("eval_strategy", "no") != "no"
     val_file = cfg["data"].get("val_file")
-    if val_file and os.path.isfile(val_file):
+    if eval_enabled and val_file and os.path.isfile(val_file):
         data_files["validation"] = val_file
     dataset = load_dataset("json", data_files=data_files)
 
