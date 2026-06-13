@@ -233,8 +233,7 @@ class BioMistralSummarizer:
             generated = self.model.generate(
                 **inputs,
                 max_new_tokens=self.max_new_tokens,
-                do_sample=False,
-                temperature=0.0,
+                do_sample=False,  # greedy; temperature is intentionally unset
                 pad_token_id=self.tokenizer.pad_token_id,
             )
         # Decode only the newly generated portion.
