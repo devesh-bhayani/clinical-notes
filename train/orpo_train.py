@@ -145,12 +145,18 @@ def build_trainer(cfg: dict, model, tokenizer, dataset):
         gradient_checkpointing=True,
     )
 
+    # Compatibility shim: TRL 0.24's ORPOTrainer writes to model.warnings_issued,
+    # an attribute transformers removed in 5.x. Harmless on transformers 4.x
+    # (the attribute already exists, so this no-ops).
+    if not hasattr(model, "warnings_issued"):
+        model.warnings_issued = {}
+
     trainer = ORPOTrainer(
         model=model,
         args=args,
         train_dataset=dataset["train"],
         eval_dataset=dataset.get("validation"),
-        tokenizer=tokenizer,
+        processing_class=tokenizer,  # TRL >=0.12 renamed `tokenizer` -> `processing_class`
         peft_config=build_lora_config(cfg),
     )
     return trainer

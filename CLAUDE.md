@@ -35,13 +35,17 @@ Two-stage fine-tuning pipeline on BioMistral-7B for clinical note summarization:
 - `/data/drugbank_vocabulary.csv` — DrugBank entity vocabulary for NER evaluation
 - `/data/mimic/` — **HIPAA-regulated training data, never commit or log**
 
-## Pinned Dependencies
+## Dependencies
+
+The trainer targets TRL's `processing_class` API (trl >= 0.12) and includes a
+shim for transformers 5.x. Minimum working floors (validated on Python 3.13 +
+CUDA with transformers 5.2 / trl 0.24 / peft 0.18 / bitsandbytes 0.49):
 
 ```
-transformers==4.44.0
-peft==0.12.0
-trl==0.9.6
-bitsandbytes==0.43.3
+transformers>=4.46.0
+peft>=0.12.0
+trl>=0.12.0          # 0.9.x will not work (used the old `tokenizer=` arg)
+bitsandbytes>=0.43.3
 ```
 
 ## Data Rules

@@ -1,7 +1,10 @@
-transformers==4.44.0
-peft==0.12.0
-trl==0.9.6
-bitsandbytes==0.43.3
+# Core ML/training stack. Validated together on Python 3.13 + CUDA (torch 2.x).
+# The trainer uses TRL's `processing_class` API (trl >= 0.12) and includes a
+# shim for transformers 5.x (see train/orpo_train.py); trl 0.9.x will NOT work.
+transformers>=4.46.0
+peft>=0.12.0
+trl>=0.12.0
+bitsandbytes>=0.43.3
 datasets>=2.20.0
 accelerate>=0.33.0
 wandb>=0.17.0
