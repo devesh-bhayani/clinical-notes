@@ -28,7 +28,9 @@ training:
   logging_steps: 10
   save_strategy: "steps"
   save_steps: 200
-  eval_strategy: "steps"
+  # In-loop eval is off: val.jsonl/test.jsonl are eval-suite references, scored
+  # post-training by eval/run_eval_suite.py. Monitor training via W&B curves.
+  eval_strategy: "no"
   eval_steps: 200
   save_total_limit: 3
   bf16: true
