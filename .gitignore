@@ -16,6 +16,9 @@ venv/
 # HIPAA-regulated data — never commit
 data/mimic/
 
+# Fetched full drug vocabulary (keep the committed sample; full file is large)
+data/drugbank_vocabulary.csv
+
 # Model artifacts
 models/checkpoints/
 *.bin

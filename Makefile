@@ -32,6 +32,9 @@ test-cov:  ## Run tests with coverage and enforce the guardrail >=90% gate.
 	$(PYTHON) -m pytest --cov=api --cov=eval --cov=data --cov-report=term-missing
 	$(PYTHON) -m coverage report --include="api/guardrail.py" --fail-under=90
 
+vocab:  ## Fetch a drug-name vocabulary from RxNorm (public domain) to data/.
+	$(PYTHON) scripts/fetch_drug_vocab.py --output data/drugbank_vocabulary.csv
+
 synthetic:  ## Generate the synthetic PHI-free dataset under $(SPLITS_DIR).
 	$(STUB_ENV) SPLITS_DIR=$(SPLITS_DIR) \
 		$(PYTHON) scripts/make_synthetic_data.py --output $(SPLITS_DIR)

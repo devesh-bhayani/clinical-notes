@@ -67,7 +67,12 @@ credentialing, no HIPAA exposure.
 
 ```bash
 pip install -r requirements.txt            # full ML/serving stack (CUDA box)
-cp .env.example .env                        # set DRUGBANK_VOCAB_PATH (CC0 download)
+cp .env.example .env                        # set DRUGBANK_VOCAB_PATH (see below)
+
+# Drug vocabulary for the guardrail/DEER metric — RxNorm (NLM, public domain,
+# no account). A free drop-in for the gated DrugBank Vocabulary download:
+python scripts/fetch_drug_vocab.py --output data/drugbank_vocabulary.csv
+#   ...then set DRUGBANK_VOCAB_PATH=data/drugbank_vocabulary.csv in .env
 
 python train/vram_test.py                              # preflight GPU check
 
@@ -161,10 +166,13 @@ Metrics whose backend isn't configured (BERTScore, GPT-4o) are reported as
 - **MIMIC-IV notes** (`MIMIC_DATA_DIR`): a CSV with a note-text column
   (`text`/`note`/`TEXT`/`note_text`) and, ideally, a `category` column so the
   pipeline can filter to discharge summaries.
-- **DrugBank vocabulary** (`DRUGBANK_VOCAB_PATH`): a CSV with a `Common name`
-  column and an optional `Synonyms` column (`|`-delimited). A single-column /
-  headerless name list also works. See
-  [data/drugbank_vocabulary.sample.csv](data/drugbank_vocabulary.sample.csv).
+- **Drug vocabulary** (`DRUGBANK_VOCAB_PATH`): a CSV with a `Common name`
+  column and an optional `Synonyms` column (`|`-delimited); a single-column /
+  headerless name list also works (see
+  [data/drugbank_vocabulary.sample.csv](data/drugbank_vocabulary.sample.csv)).
+  The official DrugBank Vocabulary (CC0) requires a free account; if that
+  download is unavailable, `python scripts/fetch_drug_vocab.py` builds an
+  equivalent ~27k-name CSV from **RxNorm** (NLM, public domain, no account).
 - **Demographics for the bias audit** (optional): per-record `age`,
   `ethnicity`/`race`, and `admission_type` fields under a `metadata` key.
 
