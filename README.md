@@ -61,6 +61,9 @@ docker compose up --build      # API on :8000, UI on :8501
 
 ### B. Real training run (GPU)
 
+> 📋 For a step-by-step operational guide with success checks and
+> troubleshooting, see **[RUNBOOK.md](RUNBOOK.md)**.
+
 Two data sources are supported. **Asclepius** is the zero-friction path: a
 public, **DUA-free** corpus of 157k synthetic discharge summaries — no PhysioNet
 credentialing, no HIPAA exposure.
