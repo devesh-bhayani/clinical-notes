@@ -1,0 +1,44 @@
+# ORPO config for Apple Silicon (MPS) — no CUDA/bitsandbytes.
+# LoRA in bf16 (not QLoRA); ~14 GB weights fit a 32 GB unified-memory Mac.
+# Fanless Airs throttle on long runs — good for a smoke/small run, slow for 20k.
+#   python -m data.asclepius --output data/splits --limit 2000 --make-splits
+#   python train/orpo_train.py --config configs/orpo_mac.yaml
+
+model:
+  name: "BioMistral/BioMistral-7B"
+  device_map: "mps"          # "cpu" if MPS gives trouble
+  quantization:
+    load_in_4bit: false      # bitsandbytes is CUDA-only; load bf16 instead
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  task_type: "CAUSAL_LM"
+
+training:
+  orpo_beta: 0.1
+  num_train_epochs: 1
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 5.0e-5
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  max_length: 1024
+  max_prompt_length: 768
+  logging_steps: 5
+  save_strategy: "epoch"
+  eval_strategy: "no"
+  save_total_limit: 1
+  bf16: true
+  report_to: "none"
+
+data:
+  train_file: "${SPLITS_DIR}/train_orpo.jsonl"
+  val_file: "${SPLITS_DIR}/val.jsonl"
+  test_file: "${SPLITS_DIR}/test.jsonl"
+
+output:
+  output_dir: "models/mac"
+  logging_dir: "logs"

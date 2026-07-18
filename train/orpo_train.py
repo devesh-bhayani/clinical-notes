@@ -94,12 +94,22 @@ def load_model_and_tokenizer(cfg: dict):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        quantization_config=build_quantization_config(),
-        device_map="auto",
-    )
-    model = prepare_model_for_kbit_training(model)
+    # ponytail: 4-bit is CUDA-only (bitsandbytes). Config can disable it
+    # (load_in_4bit: false) to run bf16 LoRA on MPS/CPU — see configs/orpo_mac.yaml.
+    use_4bit = cfg["model"].get("quantization", {}).get("load_in_4bit", True)
+    device_map = cfg["model"].get("device_map", "auto")
+
+    if use_4bit:
+        import torch
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, quantization_config=build_quantization_config(), device_map=device_map
+        )
+        model = prepare_model_for_kbit_training(model)
+    else:
+        import torch
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, dtype=torch.bfloat16, device_map=device_map
+        )
     model.config.use_cache = False
     return model, tokenizer
 
