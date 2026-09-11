@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import re
 
@@ -138,12 +139,61 @@ def load_data(cfg: dict):
     return dataset
 
 
+def _adapt_config_kwargs(kwargs: dict, config_cls, total_steps: int) -> dict:
+    """Translate or drop TrainingArguments kwargs the installed stack removed.
+
+    transformers 5.x dropped `logging_dir` and `warmup_ratio` from
+    TrainingArguments. The YAML schema keeps both — they read naturally and the
+    CUDA-validated stack accepts them — so translate here rather than require
+    every config to be rewritten per transformers version:
+
+        warmup_ratio -> warmup_steps   (needs the total step count)
+        logging_dir  -> dropped        (5.x derives it from output_dir)
+
+    Anything else the installed version rejects is dropped with a warning, so a
+    newer stack degrades loudly instead of raising TypeError at construction.
+    """
+    import dataclasses
+
+    accepted = {f.name for f in dataclasses.fields(config_cls)}
+
+    if "warmup_ratio" in kwargs and "warmup_ratio" not in accepted:
+        ratio = kwargs.pop("warmup_ratio")
+        if ratio and total_steps > 0 and "warmup_steps" in accepted:
+            kwargs["warmup_steps"] = max(1, round(float(ratio) * total_steps))
+            logger.info(
+                "warmup_ratio=%s not supported by %s; using warmup_steps=%d (of %d total)",
+                ratio, config_cls.__name__, kwargs["warmup_steps"], total_steps,
+            )
+
+    dropped = sorted(k for k in kwargs if k not in accepted)
+    for key in dropped:
+        kwargs.pop(key)
+    if dropped:
+        logger.warning(
+            "%s does not accept %s — dropped. The installed transformers/trl is "
+            "newer than this trainer targets.",
+            config_cls.__name__, ", ".join(dropped),
+        )
+    return kwargs
+
+
+def _total_training_steps(t: dict, dataset) -> int:
+    """Optimizer steps the run will take — used to convert warmup_ratio."""
+    max_steps = t.get("max_steps", -1) or -1
+    if max_steps > 0:
+        return int(max_steps)
+    per_step = t["per_device_train_batch_size"] * t["gradient_accumulation_steps"]
+    steps_per_epoch = math.ceil(len(dataset["train"]) / max(1, per_step))
+    return max(1, steps_per_epoch * int(t["num_train_epochs"]))
+
+
 def build_trainer(cfg: dict, model, tokenizer, dataset):
     """Construct the ORPOTrainer with config-driven hyperparameters."""
     from trl import ORPOConfig, ORPOTrainer
 
     t = cfg["training"]
-    args = ORPOConfig(
+    kwargs = dict(
         output_dir=cfg["output"]["output_dir"],
         logging_dir=cfg["output"].get("logging_dir", "logs"),
         beta=t["orpo_beta"],
@@ -166,6 +216,9 @@ def build_trainer(cfg: dict, model, tokenizer, dataset):
         bf16=t.get("bf16", True),
         report_to=t.get("report_to", "none"),
         gradient_checkpointing=True,
+    )
+    args = ORPOConfig(
+        **_adapt_config_kwargs(kwargs, ORPOConfig, _total_training_steps(t, dataset))
     )
 
     # Compatibility shim: TRL 0.24's ORPOTrainer writes to model.warnings_issued,

@@ -20,12 +20,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
 
+from eval import metrics as metrics_mod
 from eval.metrics import (
     compute_bertscore,
     compute_drug_entity_error_rate,
     compute_factscore,
     compute_gpt4o_preference,
-    compute_hhem_score,
+    compute_hhem_detailed,
     compute_rouge_l,
     load_drugbank_vocab,
 )
@@ -101,7 +102,8 @@ def run_all_metrics(predictions: list[dict], references: list[dict]) -> dict:
         )
 
     vocab = load_drugbank_vocab()
-    results: dict[str, float | None] = {}
+    results: dict[str, object] = {}
+    methods: dict[str, str] = {}
 
     def _safe(name, fn):
         try:
@@ -110,19 +112,40 @@ def run_all_metrics(predictions: list[dict], references: list[dict]) -> dict:
             logger.warning("Metric %s failed: %s", name, exc)
             results[name] = None
 
+    def _hhem():
+        # Record which implementation answered: the lexical proxy clears the
+        # threshold easily and must not be mistaken for a hallucination score.
+        score, method = compute_hhem_detailed(predictions, references)
+        methods["hhem"] = method
+        return score
+
     _safe("drug_entity_error_rate",
           lambda: compute_drug_entity_error_rate(predictions, vocab))
-    _safe("hhem", lambda: compute_hhem_score(predictions, references))
+    _safe("hhem", _hhem)
     _safe("bertscore", lambda: compute_bertscore(predictions, references))
     _safe("rouge_l", lambda: compute_rouge_l(predictions, references))
     _safe("factscore", lambda: compute_factscore(predictions, references))
     _safe("gpt4o_preference",
           lambda: compute_gpt4o_preference(predictions, references))
+    # Carried alongside the values so check_gates sees provenance without the
+    # caller having to thread a second argument through.
+    results["_methods"] = methods
     return results
 
 
-def check_gates(results: dict) -> dict:
-    """Compare metric results against EVAL_TARGETS. Returns per-metric status."""
+def check_gates(results: dict, methods: dict | None = None) -> dict:
+    """Compare metric results against EVAL_TARGETS. Returns per-metric status.
+
+    ``methods`` maps a metric to the implementation that produced it (see
+    ``run_all_metrics``). A metric computed by a stand-in rather than its real
+    implementation is marked ``degraded`` and can never read as ``pass``:
+    the number may clear the threshold, but it did not measure the property the
+    gate exists to protect. ``overall`` is ``pass`` only when every gate genuinely
+    passed.
+    """
+    if methods is None:
+        raw = results.get("_methods")
+        methods = raw if isinstance(raw, dict) else {}
     gates = {}
     for metric, (target, direction) in EVAL_TARGETS.items():
         value = results.get(metric)
@@ -130,17 +153,31 @@ def check_gates(results: dict) -> dict:
             gates[metric] = {"target": target, "value": None, "status": "skipped"}
             continue
         passed = value <= target if direction == "max" else value >= target
-        gates[metric] = {
+        gate = {
             "target": target,
             "value": value,
             "direction": direction,
             "status": "pass" if passed else "fail",
         }
-    gates["overall"] = {
-        "status": "pass"
-        if all(g["status"] != "fail" for g in gates.values())
-        else "fail"
-    }
+        if metric == "hhem" and methods.get("hhem") == metrics_mod.HHEM_PROXY:
+            gate["status"] = "degraded"
+            gate["method"] = metrics_mod.HHEM_PROXY
+            gate["note"] = (
+                "Lexical proxy, not HHEM — this value does not measure "
+                "hallucination and cannot satisfy the gate."
+            )
+        elif metric in methods:
+            gate["method"] = methods[metric]
+        gates[metric] = gate
+
+    statuses = {g["status"] for g in gates.values()}
+    if "fail" in statuses:
+        overall = "fail"
+    elif "degraded" in statuses:
+        overall = "degraded"
+    else:
+        overall = "pass"
+    gates["overall"] = {"status": overall}
     return gates
 
 
@@ -181,9 +218,23 @@ def main() -> None:
     save_results(report, args.output)
 
     print(json.dumps(gate_results, indent=2))
+
+    overall = gate_results["overall"]["status"]
+    if overall == "degraded":
+        degraded = [
+            name for name, g in gate_results.items()
+            if name != "overall"
+            and isinstance(g, dict) and g.get("status") == "degraded"
+        ]
+        logger.error(
+            "DEGRADED: %s did not run its real implementation. The thresholds "
+            "they clear are meaningless — treat this run as unverified, not green.",
+            ", ".join(degraded),
+        )
+
     if args.smoke:
         raise SystemExit(0)
-    raise SystemExit(0 if gate_results["overall"]["status"] == "pass" else 1)
+    raise SystemExit(0 if overall == "pass" else 1)
 
 
 if __name__ == "__main__":

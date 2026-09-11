@@ -19,8 +19,9 @@ data/mimic/
 # Fetched full drug vocabulary (keep the committed sample; full file is large)
 data/drugbank_vocabulary.csv
 
-# Model artifacts
-models/checkpoints/
+# Model artifacts. All of models/ is training output: the configs write to
+# models/checkpoints (CUDA), models/mac and models/smoke_mac (Apple Silicon).
+models/
 *.bin
 *.safetensors
 

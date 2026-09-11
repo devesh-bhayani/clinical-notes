@@ -143,9 +143,15 @@ def prepare_orpo_splits(
     test, val, train = records[:n_test], records[n_test:n_test + n_val], records[n_test + n_val:]
 
     def _write_refs(path, rows):
+        # The source note ships alongside the reference so the split is
+        # self-contained: scripts/generate_predictions.py needs the model input,
+        # and without it an eval split cannot be scored against a real model at
+        # all. eval/run_eval_suite.py unwraps the "chosen" key and ignores the rest.
         with open(path, "w", encoding="utf-8") as fh:
             for r in rows:
-                fh.write(json.dumps({"chosen": r["chosen"]}, ensure_ascii=False) + "\n")
+                fh.write(json.dumps(
+                    {"note": r["note"], "chosen": r["chosen"]}, ensure_ascii=False
+                ) + "\n")
 
     _write_refs(out / "val.jsonl", val)
     _write_refs(out / "test.jsonl", test)

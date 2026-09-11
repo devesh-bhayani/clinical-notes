@@ -79,4 +79,11 @@ def test_eval_suite_runs_end_to_end(synthetic):
         assert gates[optional]["status"] in {"pass", "skipped"}
 
     # Overall gate never "fails" purely because optional metrics are skipped.
-    assert gates["overall"]["status"] in {"pass", "fail"}
+    # "degraded" appears when a metric fell back to a stand-in implementation
+    # (e.g. HHEM's lexical proxy) — not a failure, but not a pass either.
+    assert gates["overall"]["status"] in {"pass", "fail", "degraded"}
+
+    # A stand-in must never read as a pass: whichever way HHEM resolved here,
+    # the two must agree.
+    if gates["hhem"]["status"] == "degraded":
+        assert gates["overall"]["status"] != "pass"

@@ -1,9 +1,22 @@
-# Core ML/training stack. Validated together on Python 3.13 + CUDA (torch 2.x).
-# The trainer uses TRL's `processing_class` API (trl >= 0.12) and includes a
-# shim for transformers 5.x (see train/orpo_train.py); trl 0.9.x will NOT work.
-transformers>=4.46.0
+# Core ML/training stack for CUDA. See requirements-mac.txt for Apple Silicon.
+#
+# The trainer uses TRL's `processing_class` API (trl >= 0.12); trl 0.9.x will
+# NOT work. Both upper bounds below are load-bearing — without them a fresh
+# install resolves to versions that break the pipeline:
+#
+#   trl >= 0.29          moved ORPOConfig/ORPOTrainer to trl.experimental, so
+#                        `from trl import ORPOConfig` raises ImportError.
+#                        0.24-0.28 keep the top-level export; 0.24 is verified.
+#   transformers >= 5.0  dropped `warmup_ratio` and `logging_dir` from
+#                        TrainingArguments (train/orpo_train.py adapts, see
+#                        _adapt_config_kwargs), and breaks Vectara's HHEM model,
+#                        which makes eval/metrics.py fall back to a lexical
+#                        proxy that cannot measure hallucination.
+#
+# Verified working set: transformers 4.57.6 / trl 0.24 / peft 0.20 / torch 2.14.
+transformers>=4.46.0,<5
 peft>=0.12.0
-trl>=0.12.0
+trl>=0.12.0,<0.29
 bitsandbytes>=0.43.3
 datasets>=2.20.0
 accelerate>=0.33.0

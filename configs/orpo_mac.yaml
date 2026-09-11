@@ -1,7 +1,15 @@
 # ORPO config for Apple Silicon (MPS) — no CUDA/bitsandbytes.
-# LoRA in bf16 (not QLoRA); ~14 GB weights fit a 32 GB unified-memory Mac.
-# Fanless Airs throttle on long runs — good for a smoke/small run, slow for 20k.
-#   python -m data.asclepius --output data/splits --limit 2000 --make-splits
+# LoRA in bf16 (not QLoRA). On a 48 GB unified-memory Mac: ~14.5 GB of weights,
+# ~1 GB of optimizer state, and ~8-10 GB of activations/logits at max_length
+# 4096 — comfortably inside the ~36 GB macOS gives the GPU by default.
+#
+# To hand the run more than the default ~75% cap:
+#   sudo sysctl iogpu.wired_limit_mb=40960
+#
+# Rank, alpha, and effective batch match configs/orpo_base.yaml so Mac and CUDA
+# runs are comparable; the target_modules list here is wider (see below). Still
+# far slower than a GPU box — this is for iterating on a few thousand pairs.
+#   python -m data.asclepius --output data/splits --limit 5000 --make-splits
 #   python train/orpo_train.py --config configs/orpo_mac.yaml
 
 model:
@@ -11,22 +19,31 @@ model:
     load_in_4bit: false      # bitsandbytes is CUDA-only; load bf16 instead
 
 lora:
-  r: 16
-  lora_alpha: 32
+  r: 32
+  lora_alpha: 64
   lora_dropout: 0.05
-  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  # MLP projections (gate/up/down) included alongside attention: broader module
+  # coverage generally buys more than higher rank at equal cost. This is wider
+  # than orpo_base.yaml, which still targets the four attention projections only.
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
   task_type: "CAUSAL_LM"
 
 training:
   orpo_beta: 0.1
-  num_train_epochs: 1
-  per_device_train_batch_size: 1
-  gradient_accumulation_steps: 8
+  num_train_epochs: 2
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 8   # effective batch 16, matching orpo_base.yaml
   learning_rate: 5.0e-5
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.1
-  max_length: 1024
-  max_prompt_length: 768
+  # Real discharge summaries average ~2,270 tokens, so max_length 1024 truncated
+  # most of every note before the medications section. 3072 prompt + 1024
+  # completion covers a typical note and a ~560-token summary.
+  # If MPS OOMs: drop per_device_train_batch_size to 1 first (raise
+  # gradient_accumulation_steps to 16 to hold the effective batch), then halve
+  # max_length/max_prompt_length only if that is not enough.
+  max_length: 4096
+  max_prompt_length: 3072
   logging_steps: 5
   save_strategy: "epoch"
   eval_strategy: "no"

@@ -141,7 +141,11 @@ def build_synthetic_dataset(output_dir: str | Path) -> dict[str, str]:
             if not line:
                 continue
             record = json.loads(line)
-            ref_fh.write(json.dumps({"chosen": record["chosen"]}) + "\n")
+            # Keep the note alongside the reference (same shape as the Asclepius
+            # splits) so this fixture also works with generate_predictions.py.
+            ref_fh.write(json.dumps(
+                {"note": record["note"], "chosen": record["chosen"]}
+            ) + "\n")
             prediction = summarizer.summarize(record["note"])
             pred_fh.write(json.dumps(prediction) + "\n")
 

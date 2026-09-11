@@ -1,0 +1,53 @@
+# ORPO SMOKE config for Apple Silicon (MPS) — the Mac counterpart of
+# configs/orpo_smoke.yaml, which is CUDA-only (it sets load_in_4bit: true and
+# so requires bitsandbytes).
+#
+# Purpose: validate model load -> ORPO step -> save end to end on MPS in a few
+# minutes, before committing to a long run. Not for producing a usable model.
+#
+#   python train/orpo_train.py --config configs/orpo_smoke_mac.yaml
+#
+# Sequence length is kept at 1024 deliberately: the current Asclepius splits
+# average ~700-token prompts, so a longer max_length would only add padding and
+# would not actually exercise the 4096 path in configs/orpo_mac.yaml. That path
+# is only meaningfully tested once longer notes (MIMIC) are in the splits.
+
+model:
+  name: "BioMistral/BioMistral-7B"
+  device_map: "mps"
+  quantization:
+    load_in_4bit: false      # bitsandbytes is CUDA-only; bf16 LoRA instead
+
+lora:
+  r: 16                      # smaller adapter for a faster smoke run
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  task_type: "CAUSAL_LM"
+
+training:
+  orpo_beta: 0.1
+  num_train_epochs: 1
+  max_steps: 20              # hard cap — the whole point of the smoke run
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 1
+  learning_rate: 5.0e-5
+  lr_scheduler_type: "constant"
+  warmup_ratio: 0.0
+  max_length: 1024
+  max_prompt_length: 768
+  logging_steps: 5
+  save_strategy: "no"        # one save at the end via trainer.save_model()
+  eval_strategy: "no"
+  save_total_limit: 1
+  bf16: true
+  report_to: "none"
+
+data:
+  train_file: "${SPLITS_DIR}/train_orpo.jsonl"
+  val_file: "${SPLITS_DIR}/val.jsonl"
+  test_file: "${SPLITS_DIR}/test.jsonl"
+
+output:
+  output_dir: "models/smoke_mac"
+  logging_dir: "logs"

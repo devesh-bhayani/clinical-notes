@@ -10,6 +10,7 @@ Run with:
 
 import pytest
 
+from eval import metrics
 from eval.metrics import (
     compute_drug_entity_error_rate,
     compute_factscore,
@@ -117,3 +118,40 @@ def test_check_gates_skipped_does_not_fail():
     gates = check_gates(results)
     assert gates["gpt4o_preference"]["status"] == "skipped"
     assert gates["overall"]["status"] == "pass"
+
+
+def test_check_gates_hhem_proxy_is_degraded_not_pass():
+    """A proxy-derived HHEM score must never satisfy the gate.
+
+    0.9 clears the 0.80 target, but lexical overlap does not measure
+    hallucination - the run is unverified, not green.
+    """
+    results = {
+        "drug_entity_error_rate": 0.0, "hhem": 0.9, "bertscore": 0.9,
+        "rouge_l": 0.5, "factscore": 0.8, "gpt4o_preference": 0.8,
+        "_methods": {"hhem": metrics.HHEM_PROXY},
+    }
+    gates = check_gates(results)
+    assert gates["hhem"]["status"] == "degraded"
+    assert gates["overall"]["status"] == "degraded"
+
+
+def test_check_gates_hhem_real_model_passes():
+    """The same score from the real model is a genuine pass."""
+    results = {
+        "drug_entity_error_rate": 0.0, "hhem": 0.9, "bertscore": 0.9,
+        "rouge_l": 0.5, "factscore": 0.8, "gpt4o_preference": 0.8,
+        "_methods": {"hhem": metrics.HHEM_MODEL},
+    }
+    gates = check_gates(results)
+    assert gates["hhem"]["status"] == "pass"
+    assert gates["overall"]["status"] == "pass"
+
+
+def test_hhem_detailed_reports_proxy_when_model_disabled():
+    """use_model=False must self-identify as the proxy, not stay silent."""
+    s = {"diagnoses": ["pneumonia"], "medications": [], "procedures": [],
+         "discharge_instructions": "rest", "confidence_flags": []}
+    score, method = metrics.compute_hhem_detailed([s], [s], use_model=False)
+    assert method == metrics.HHEM_PROXY
+    assert 0.0 <= score <= 1.0

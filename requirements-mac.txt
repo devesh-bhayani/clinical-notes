@@ -1,0 +1,40 @@
+# Apple Silicon (MPS) training/serving stack.
+#
+# Identical to requirements.txt except:
+#   - bitsandbytes is OMITTED — it is CUDA-only and fails to build on macOS.
+#     Nothing imports it unless a config sets quantization.load_in_4bit: true,
+#     and configs/orpo_mac.yaml sets it false (bf16 LoRA instead of QLoRA).
+#   - torch is pinned explicitly; on macOS the default wheel already ships MPS.
+#
+# Use with configs/orpo_mac.yaml:
+#   uv venv --python 3.11 .venv
+#   .venv/bin/python -m pip install -r requirements-mac.txt
+#   .venv/bin/python train/orpo_train.py --config configs/orpo_mac.yaml
+
+torch>=2.4.0
+transformers>=4.46.0,<5     # Vectara HHEM fails to load on transformers 5.x
+                            # (HHEMv2ForSequenceClassification has no
+                            # all_tied_weights_keys), and eval/metrics.py then
+                            # silently degrades to a lexical proxy. 4.x also
+                            # keeps warmup_ratio/logging_dir on
+                            # TrainingArguments, so the trainer needs no
+                            # kwarg translation.
+peft>=0.12.0
+trl>=0.12.0,<1.0          # TRL 1.x moved ORPO to trl.experimental and renamed
+                          # max_prompt_length/warmup_ratio/logging_dir. The
+                          # trainer targets the 0.x API (validated on 0.24).
+datasets>=2.20.0
+accelerate>=0.33.0
+wandb>=0.17.0
+pyyaml>=6.0
+fastapi>=0.111.0
+uvicorn>=0.30.0
+streamlit>=1.36.0
+bert-score>=0.3.13
+python-dotenv>=1.0.0
+httpx>=0.27.0
+pytest>=8.2.0
+spacy>=3.7.0
+pandas>=2.2.0
+rouge-score>=0.1.2
+rapidfuzz>=3.9.0

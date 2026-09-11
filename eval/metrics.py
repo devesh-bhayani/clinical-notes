@@ -102,22 +102,20 @@ def compute_drug_entity_error_rate(
 
 # --- HHEM (hallucination) ---------------------------------------------------
 
-def compute_hhem_score(
-    predictions: list[dict],
-    references: list[dict],
-    use_model: bool = True,
-) -> float:
-    """Mean factual-consistency score in [0, 1] (higher is more faithful).
+# How a factual-consistency score was produced. The distinction is a gating
+# concern, not a cosmetic one: HHEM_PROXY is lexical token overlap, which does
+# not measure hallucination and must never satisfy the HHEM gate on its own.
+HHEM_MODEL = "model"
+HHEM_PROXY = "proxy"
 
-    Uses Vectara's HHEM model when available; otherwise a deterministic lexical
-    proxy: the fraction of prediction tokens supported by the reference.
+
+def _hhem_proxy(predictions: list[dict], references: list[dict]) -> float:
+    """Lexical stand-in: fraction of prediction tokens supported by the reference.
+
+    Cheap and dependency-free, but it only detects unsupported *wording*. A
+    fluent hallucination that reuses the reference's vocabulary scores well
+    here, which is exactly why it cannot stand in for HHEM when gating.
     """
-    if use_model:
-        score = _hhem_with_model(predictions, references)
-        if score is not None:
-            return score
-        logger.warning("HHEM model unavailable; using lexical consistency proxy.")
-
     scores = []
     for pred, ref in zip(predictions, references):
         p_tokens = set(_tokens(summary_to_text(pred))) - _LABEL_TOKENS
@@ -128,6 +126,42 @@ def compute_hhem_score(
         supported = len(p_tokens & r_tokens) / len(p_tokens)
         scores.append(supported)
     return sum(scores) / len(scores) if scores else 0.0
+
+
+def compute_hhem_detailed(
+    predictions: list[dict],
+    references: list[dict],
+    use_model: bool = True,
+) -> tuple[float, str]:
+    """Return ``(score, method)`` — the score and which implementation produced it.
+
+    ``method`` is :data:`HHEM_MODEL` or :data:`HHEM_PROXY`. Callers that gate on
+    the result must branch on it: a proxy score is not a hallucination measure.
+    """
+    if use_model:
+        score = _hhem_with_model(predictions, references)
+        if score is not None:
+            return score, HHEM_MODEL
+        logger.warning(
+            "HHEM model unavailable — falling back to the lexical proxy. This is "
+            "NOT a hallucination score and must not satisfy the HHEM gate."
+        )
+
+    return _hhem_proxy(predictions, references), HHEM_PROXY
+
+
+def compute_hhem_score(
+    predictions: list[dict],
+    references: list[dict],
+    use_model: bool = True,
+) -> float:
+    """Mean factual-consistency score in [0, 1] (higher is more faithful).
+
+    Thin wrapper over :func:`compute_hhem_detailed` that discards the method.
+    Prefer the detailed form anywhere the score feeds a pass/fail decision —
+    this one cannot tell you whether you got HHEM or the proxy.
+    """
+    return compute_hhem_detailed(predictions, references, use_model)[0]
 
 
 def _hhem_with_model(predictions, references) -> float | None:

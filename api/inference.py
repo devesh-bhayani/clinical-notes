@@ -196,31 +196,51 @@ class BioMistralSummarizer:
         checkpoint_dir: str,
         base_model: str | None = None,
         max_new_tokens: int = 768,
+        load_in_4bit: bool | None = None,
+        device_map: str | None = None,
     ) -> None:
         import torch
         from peft import PeftModel
-        from transformers import (
-            AutoModelForCausalLM,
-            AutoTokenizer,
-            BitsAndBytesConfig,
-        )
+        from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self.max_new_tokens = max_new_tokens
         base = base_model or os.getenv("BASE_MODEL_NAME", "BioMistral/BioMistral-7B")
 
-        quant = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-        )
+        # 4-bit needs bitsandbytes, which is CUDA-only, so default it to whether
+        # CUDA is actually present rather than assuming it. On Apple Silicon this
+        # loads bf16 on MPS instead — the same trade configs/orpo_mac.yaml makes.
+        has_cuda = torch.cuda.is_available()
+        if load_in_4bit is None:
+            load_in_4bit = has_cuda
+        if device_map is None:
+            if has_cuda:
+                device_map = "auto"
+            elif torch.backends.mps.is_available():
+                device_map = "mps"
+            else:
+                device_map = "cpu"
+
         self.tokenizer = AutoTokenizer.from_pretrained(base)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        model = AutoModelForCausalLM.from_pretrained(
-            base, quantization_config=quant, device_map="auto"
-        )
+        if load_in_4bit:
+            from transformers import BitsAndBytesConfig
+
+            quant = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_use_double_quant=True,
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                base, quantization_config=quant, device_map=device_map
+            )
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                base, dtype=torch.bfloat16, device_map=device_map
+            )
+
         # Attach the trained adapter.
         self.model = PeftModel.from_pretrained(model, checkpoint_dir)
         self.model.eval()
