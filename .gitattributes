@@ -1,0 +1,33 @@
+# Line-ending policy.
+#
+# The working tree had drifted to CRLF while HEAD stored LF, so every tracked
+# file showed as modified even when untouched. These rules normalize the repo
+# and stop it recurring.
+#
+#   text=auto  Git detects text vs binary and normalizes to LF on commit.
+#   eol=lf     Text files are LF in the working tree too, on every platform.
+#
+# eol=lf is deliberate rather than leaving checkout platform-native: this repo
+# ships a Makefile (tab-sensitive) and a Dockerfile (CRLF breaks RUN lines), and
+# the project targets Linux/CUDA and macOS/MPS. Pinning LF everywhere keeps a
+# Windows checkout from reintroducing the drift.
+
+* text=auto eol=lf
+
+# Files where LF is a correctness requirement, not a preference.
+Makefile       text eol=lf
+Dockerfile     text eol=lf
+*.sh           text eol=lf
+
+# Binary artifacts. All are gitignored today, but declaring them means a stray
+# commit is never corrupted by line-ending conversion.
+*.safetensors  binary
+*.bin          binary
+*.pt           binary
+*.ckpt         binary
+*.npy          binary
+*.png          binary
+*.jpg          binary
+*.jpeg         binary
+*.gz           binary
+*.zip          binary
