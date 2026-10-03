@@ -18,7 +18,12 @@ from eval.metrics import (
     compute_rouge_l,
     summary_to_text,
 )
-from eval.run_eval_suite import check_gates
+from eval.run_eval_suite import (
+    PREDICTIONS_MODEL,
+    PREDICTIONS_STUB,
+    check_gates,
+    detect_prediction_provenance,
+)
 
 
 def _summary(diagnoses=None, meds=None, procedures=None, instructions=""):
@@ -155,3 +160,115 @@ def test_hhem_detailed_reports_proxy_when_model_disabled():
     score, method = metrics.compute_hhem_detailed([s], [s], use_model=False)
     assert method == metrics.HHEM_PROXY
     assert 0.0 <= score <= 1.0
+
+
+# --- prediction provenance ------------------------------------------------
+# A metric is only as meaningful as the output it scored. These pin the rule
+# that stub predictions invalidate a run instead of failing it.
+
+
+def _stub_summary():
+    """A stub-flagged prediction, as api.inference.StubSummarizer emits."""
+    from api.inference import STUB_INFERENCE_FLAG
+
+    s = _summary(diagnoses=["pneumonia"], instructions="rest")
+    s["confidence_flags"] = [STUB_INFERENCE_FLAG]
+    return s
+
+
+def test_stub_flag_constant_is_shared_with_inference():
+    """Eval must key off the same literal the stub actually writes."""
+    from api.inference import STUB_INFERENCE_FLAG, StubSummarizer
+
+    out = StubSummarizer().summarize("Diagnosis: pneumonia\nIbuprofen 400mg PO")
+    assert STUB_INFERENCE_FLAG in out["confidence_flags"]
+
+
+def test_detect_provenance_flags_stub_predictions():
+    provenance, count = detect_prediction_provenance([_stub_summary()] * 3)
+    assert provenance == PREDICTIONS_STUB
+    assert count == 3
+
+
+def test_detect_provenance_model_when_unflagged():
+    provenance, count = detect_prediction_provenance([_summary(), _summary()])
+    assert provenance == PREDICTIONS_MODEL
+    assert count == 0
+
+
+def test_detect_provenance_one_stub_record_taints_the_run():
+    """Mixed output is not partially trustworthy — the file is not a model's."""
+    provenance, count = detect_prediction_provenance(
+        [_summary(), _stub_summary(), _summary()]
+    )
+    assert provenance == PREDICTIONS_STUB
+    assert count == 1
+
+
+def test_detect_provenance_tolerates_missing_flags_key():
+    provenance, _ = detect_prediction_provenance([{"medications": []}])
+    assert provenance == PREDICTIONS_MODEL
+
+
+def test_stub_provenance_invalidates_every_gate():
+    """Numbers that clear their thresholds still cannot read as pass."""
+    results = {
+        "drug_entity_error_rate": 0.0, "hhem": 0.9, "bertscore": 0.9,
+        "rouge_l": 0.5, "factscore": 0.8, "gpt4o_preference": 0.8,
+        "_methods": {"hhem": metrics.HHEM_MODEL},
+    }
+    gates = check_gates(results, provenance=PREDICTIONS_STUB)
+    assert gates["overall"]["status"] == "invalid"
+    for name in results:
+        if name.startswith("_"):
+            continue
+        assert gates[name]["status"] == "invalid", name
+        assert "stub" in gates[name]["note"].lower()
+
+
+def test_stub_provenance_outranks_fail():
+    """The real regression: a stub run must not read as a weak model."""
+    results = {
+        "drug_entity_error_rate": 0.0, "hhem": 0.23, "bertscore": 0.92,
+        "rouge_l": 0.39, "factscore": 0.70, "gpt4o_preference": None,
+        "_methods": {"hhem": metrics.HHEM_MODEL},
+    }
+    assert check_gates(results)["overall"]["status"] == "fail"
+    gates = check_gates(results, provenance=PREDICTIONS_STUB)
+    assert gates["overall"]["status"] == "invalid"
+    assert gates["overall"]["provenance"] == PREDICTIONS_STUB
+
+
+def test_stub_provenance_leaves_skipped_metrics_skipped():
+    """A metric that never ran did not score the stub; don't claim it did."""
+    results = {
+        "drug_entity_error_rate": 0.0, "hhem": 0.9, "bertscore": 0.9,
+        "rouge_l": 0.5, "factscore": 0.8, "gpt4o_preference": None,
+        "_methods": {"hhem": metrics.HHEM_MODEL},
+    }
+    gates = check_gates(results, provenance=PREDICTIONS_STUB)
+    assert gates["gpt4o_preference"]["status"] == "skipped"
+    assert "note" not in gates["gpt4o_preference"]
+    assert gates["drug_entity_error_rate"]["status"] == "invalid"
+    assert gates["overall"]["status"] == "invalid"
+
+
+def test_model_provenance_leaves_gates_untouched():
+    results = {
+        "drug_entity_error_rate": 0.0, "hhem": 0.9, "bertscore": 0.9,
+        "rouge_l": 0.5, "factscore": 0.8, "gpt4o_preference": 0.8,
+        "_methods": {"hhem": metrics.HHEM_MODEL},
+    }
+    gates = check_gates(results, provenance=PREDICTIONS_MODEL)
+    assert gates["overall"]["status"] == "pass"
+    assert gates["drug_entity_error_rate"]["status"] == "pass"
+
+
+def test_provenance_defaults_to_not_invalidating():
+    """Omitting provenance must preserve the pre-existing contract."""
+    results = {
+        "drug_entity_error_rate": 0.0, "hhem": 0.9, "bertscore": 0.9,
+        "rouge_l": 0.5, "factscore": 0.8, "gpt4o_preference": 0.8,
+        "_methods": {"hhem": metrics.HHEM_MODEL},
+    }
+    assert check_gates(results)["overall"]["status"] == "pass"
